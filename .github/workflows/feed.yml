@@ -1,0 +1,33 @@
+name: feed
+
+# 하루 두 번 — 축제 알림 루틴(수 20:37 · 토 08:37 KST) 앞에 새 목록이 있게.
+# 정각 예약은 GitHub가 건너뛰는 일이 있어 17분에 둔다.
+on:
+  schedule:
+    - cron: "17 20 * * *"   # 05:17 KST
+    - cron: "17 8 * * *"    # 17:17 KST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: fetch
+        env:
+          SEOUL_API_KEY: ${{ secrets.SEOUL_API_KEY }}
+        run: python fetch.py
+      - name: commit
+        run: |
+          git config user.name "feed-bot"
+          git config user.email "feed-bot@users.noreply.github.com"
+          git add data/feed.json
+          git diff --cached --quiet || git commit -m "feed $(TZ=Asia/Seoul date +'%F %H:%M')"
+          git push
