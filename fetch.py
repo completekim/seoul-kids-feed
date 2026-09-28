@@ -15,7 +15,7 @@ KEY = os.environ.get("SEOUL_API_KEY", "").strip()
 BASE = "http://openapi.seoul.go.kr:8088/%s/json/%s/%d/%d/%s"
 H = (37.4802, 127.1484)          # 스타필드 시티 위례
 MAX_KM = 25.0                    # 서울 끝(은평·강서)까지가 약 25~30 km
-CAP = 20                         # 목록마다 가까운 순으로 이만큼만 싣는다
+CAP = 8                          # 목록마다 가까운 순으로 이만큼만 싣는다 — 루틴이 그대로 메일에 옮긴다
 KST = dt.timezone(dt.timedelta(hours=9))
 NOW = dt.datetime.now(KST)
 TODAY = NOW.date()
@@ -173,6 +173,22 @@ def culture():
     return out, len(rows), skip, None
 
 
+def compact(kind, x):
+    """메일 한 줄: t 제목 · u 링크 · g 구 · d 날짜 칸 · k 거리 · x 상세 줄 · soon 3일 안 마감."""
+    if kind == "yeyak":
+        end = dt.datetime.strptime(x["rcpt_end_iso"], "%Y-%m-%d %H:%M").replace(tzinfo=KST)
+        d = "접수 ~" + x["rcpt_end"]
+        det = [x["fee"], clean(x["target"], 24), "이용 " + x["use"] if x["use"] != "~" else "", clean(x["time"], 14), clean(x["place"], 16)]
+        soon = (end - NOW).days < 3
+    else:
+        d = x["date"]
+        fee = x["fee"] if x["fee"] and x["free"] != "무료" else x["free"]
+        det = [clean(fee, 18), clean(x["target"], 24), clean(x["time"], 14), clean(x["place"], 16)]
+        soon = False
+    det = " · ".join(dict.fromkeys(v for v in det if v and v.strip("~ ")))
+    return {"t": x["title"], "u": x["url"], "g": x["gu"], "d": d, "k": x["km"], "x": det, "soon": soon}
+
+
 def main():
     if not KEY:
         sys.exit("SEOUL_API_KEY 가 없습니다")
@@ -182,9 +198,9 @@ def main():
             items, n, skip, extra = fn()
             feed[name + "_note"] = "받은 %d건 → 거른 뒤 %d건(가까운 %d건만 실음) · 뺀 것 %s" % (
                 n, len(items), min(len(items), CAP), " ".join("%s %d" % kv for kv in skip.items()))
-            feed[name] = items[:CAP]                  # 루틴은 이 중 8건 안팎만 쓴다 — 파일을 작게
+            feed[name] = [compact(name, x) for x in items[:CAP]]   # 메일 한 줄에 필요한 것만 — 파일을 작게
             if extra is not None:
-                feed["kidscafe"] = extra[:5]
+                feed["kidscafe"] = [{"t": x["title"], "u": x["url"], "k": x["km"]} for x in extra[:3]]
                 feed["kidscafe_count"] = len(extra)
         except Exception as e:                       # 한쪽이 죽어도 다른 쪽은 싣는다
             feed[name] = []
