@@ -20,6 +20,10 @@ KST = dt.timezone(dt.timedelta(hours=9))
 NOW = dt.datetime.now(KST)
 TODAY = NOW.date()
 
+# 수완 2024년 1월생 — 만 나이(개월)는 실행할 때마다 새로 센다
+BIRTH = (2024, 1)
+AGE_M = (TODAY.year - BIRTH[0]) * 12 + TODAY.month - BIRTH[1] - (1 if TODAY.day < 15 else 0)   # 생일을 달 중간으로 어림
+
 KID = re.compile(r"유아|미취학|영유아|아동|어린이|키즈|가족|자녀|부모|엄마|아빠|36개월|[0-9]+개월|만\s?[2-6]\s?세|그림책|동화|인형극")
 # 미취학 아이가 갈 수 있다는 표시 — 루틴의 🧒 기준(미취학 눈높이)과 맞춘다
 YOUNG = re.compile(r"유아|미취학|영유아|[0-9]+개월|(?<![0-9])[2-6]\s?세|누구나|제한\s?없음|전체|전\s?연령")
@@ -48,6 +52,32 @@ def km(la, lo):
     p1, p2 = math.radians(H[0]), math.radians(la)
     a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lo - H[1]) / 2) ** 2
     return round(2 * 6371 * math.asin(math.sqrt(a)), 1)
+
+
+def age_ok(text):
+    """나이 제한이 수완(AGE_M 개월)을 막으면 False. 「N세」는 만 나이로 읽는다(2023 만 나이 통일)."""
+    t = re.sub(r"\s+", "", text or "")
+    t = re.sub(r"\d{4}년\d{0,2}월?\d{0,2}일?(이전|이후)?출생|\(\d{4}[^)]*\)", "", t)   # 출생연도 괄호는 빼고 읽는다
+    lo = hi = None
+    for m in re.finditer(r"(\d{1,2})개월(이상|부터)", t):
+        lo = max(lo or 0, int(m.group(1)))
+    for m in re.finditer(r"(\d{1,2})개월(미만|이하|까지)", t):
+        v = int(m.group(1)) - (0 if m.group(2) == "미만" else -1)
+        hi = v if hi is None else min(hi, v)
+    for m in re.finditer(r"(?<![\d개])(\d{1,2})세(?!\d)", t):
+        n, after = int(m.group(1)), t[m.end():m.end() + 3]
+        if after.startswith(("미만", "이하", "까지")):
+            v = n * 12 + (0 if after.startswith("미만") else 12)
+            hi = v if hi is None else min(hi, v)
+        elif re.match(r"[~\-]", t[m.end():m.end() + 1]) or after.startswith(("이상", "부터", "유아", "어린이", "이")) or re.search(r"\d{1,2}[~\-]$", t[:m.start()]) is None:
+            lo = max(lo or 0, n * 12)                  # 「N세 이상」「N~M세」의 N, 「N세 유아~…」
+    for m in re.finditer(r"(\d{1,2})[~\-](\d{1,2})세", t):
+        lo = max(lo or 0, int(m.group(1)) * 12)
+    if lo is not None and AGE_M < lo:
+        return False
+    if hi is not None and AGE_M >= hi:
+        return False
+    return True
 
 
 def kid_ok(target, title):
@@ -97,7 +127,7 @@ def yeyak():
             s += 1000
             if s > total:
                 break
-    out, cafe, seen, skip = [], [], set(), {"상태": 0, "마감": 0, "대상": 0, "거리": 0, "중복": 0}
+    out, cafe, seen, skip = [], [], set(), {"상태": 0, "마감": 0, "대상": 0, "수완 나이": 0, "거리": 0, "중복": 0}
     for r in rows:
         if r.get("SVCSTATNM") != "접수중":
             skip["상태"] += 1; continue
@@ -108,6 +138,8 @@ def yeyak():
         tgt = clean(r.get("USETGTINFO"), 40)
         if not kid_ok(tgt, title) or r.get("MINCLASSNM") in ("청년정보", "전문/자격증", "단체봉사"):
             skip["대상"] += 1; continue
+        if not age_ok(r.get("USETGTINFO", "") + " " + title):
+            skip["수완 나이"] += 1; continue
         k = km(r.get("Y"), r.get("X"))
         if k is None or k > MAX_KM:
             skip["거리"] += 1; continue
@@ -143,7 +175,7 @@ def culture():
         if s > total or part[-1].get("STRTDATE", "")[:10] < str(TODAY - dt.timedelta(days=365)):
             break
     horizon = TODAY + dt.timedelta(days=45)
-    out, seen, skip = [], set(), {"기간": 0, "대상": 0, "거리": 0, "중복": 0}
+    out, seen, skip = [], set(), {"기간": 0, "대상": 0, "수완 나이": 0, "거리": 0, "중복": 0}
     for r in rows:
         try:
             S = dt.date.fromisoformat(r["STRTDATE"][:10]); E = dt.date.fromisoformat(r["END_DATE"][:10])
@@ -155,6 +187,8 @@ def culture():
         tgt = clean(r.get("USE_TRGT"), 40)
         if not kid_ok(tgt, title):
             skip["대상"] += 1; continue
+        if not age_ok(r.get("USE_TRGT", "") + " " + title):
+            skip["수완 나이"] += 1; continue
         k = km(r.get("LAT"), r.get("LOT"))
         if k is None or k > MAX_KM:
             skip["거리"] += 1; continue
@@ -192,7 +226,8 @@ def compact(kind, x):
 def main():
     if not KEY:
         sys.exit("SEOUL_API_KEY 가 없습니다")
-    feed = {"generated_kst": NOW.strftime("%Y-%m-%d %H:%M"), "origin": "스타필드 시티 위례", "max_km": MAX_KM}
+    feed = {"generated_kst": NOW.strftime("%Y-%m-%d %H:%M"), "origin": "스타필드 시티 위례", "max_km": MAX_KM,
+            "age": "수완 만 %d세 %d개월 기준" % (AGE_M // 12, AGE_M % 12)}
     for name, fn in (("yeyak", yeyak), ("culture", culture)):
         try:
             items, n, skip, extra = fn()
