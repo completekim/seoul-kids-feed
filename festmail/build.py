@@ -429,9 +429,11 @@ def main():
     # ── 상자 ──
     def wxdiv(s): return "<div style='font-size:12px;color:#374151;margin-top:4px'>%s</div>" % esc(s) if s else ''
     boxes_meta = []
+    nhid = {b: sum(1 for it in allitems if it['b'] == b and it['k'] in hide) for b in ('b1', 'b2', 'b3', 'b4', 'yeyak', 'culture')}
     def bx(bid, color, name, sub, lst, empty, wet, detail, extra=''):
         title = '%s — %d건' % (name, len(lst)) if bid.startswith('b') else name
         boxes_meta.append({'id': bid, 'name': title, 'color': color})
+        if not lst and nhid.get(bid): empty = '이 상자의 %d건은 모두 고르기에서 숨겼습니다 — 되살리려면 📋 고르기의 「✕ 숨김」 탭' % nhid[bid]
         return box_html(color, title, sub, [row_html(it, it['new'], it['k'] in pin, wet, detail) for it in lst], empty, extra)
     H1 = bx('b1', 'green', plan['n1'], wxdiv(wl1), by['b1'], '이 기간에 시작하는 행사 없음', wet1, True)
     H2 = bx('b2', 'orange', plan['n2'] or '🎪 다음 주말', wxdiv(wl2), by['b2'], '이 기간에 시작하는 행사 없음', wet2, True) if plan['n2'] else ''
