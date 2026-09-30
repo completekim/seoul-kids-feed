@@ -159,6 +159,7 @@ def yeyak():
             "use": "%s~%s" % (r.get("SVCOPNBGNDT", "")[5:10].replace("-", "/"), r.get("SVCOPNENDDT", "")[5:10].replace("-", "/")),
             "time": ("%s~%s" % (r.get("V_MIN", ""), r.get("V_MAX", ""))).strip("~"),
             "cat": r.get("MINCLASSNM", ""), "km": k,
+            "use_end_iso": (r.get("SVCOPNENDDT") or "")[:10],
         })
     out.sort(key=lambda x: (x["km"], x["rcpt_end_iso"]))
     cafe.sort(key=lambda x: x["km"])
@@ -208,19 +209,21 @@ def culture():
 
 
 def compact(kind, x):
-    """메일 한 줄: t 제목 · u 링크 · g 구 · d 날짜 칸 · k 거리 · x 상세 줄 · soon 3일 안 마감."""
+    """메일 한 줄: t 제목 · u 링크 · g 구 · d 날짜 칸 · k 거리 · x 상세 줄 · soon 3일 안 마감 · e 끝나는 날(YYYY-MM-DD, 고르기 표시 자동 해제용)."""
     if kind == "yeyak":
         end = dt.datetime.strptime(x["rcpt_end_iso"], "%Y-%m-%d %H:%M").replace(tzinfo=KST)
         d = "접수 ~" + x["rcpt_end"]
         det = [x["fee"], clean(x["target"], 24), "이용 " + x["use"] if x["use"] != "~" else "", clean(x["time"], 14), clean(x["place"], 16)]
         soon = (end - NOW).days < 3
+        e = x.get("use_end_iso") or x["rcpt_end_iso"][:10]
     else:
         d = x["date"]
         fee = x["fee"] if x["fee"] and x["free"] != "무료" else x["free"]
         det = [clean(fee, 18), clean(x["target"], 24), clean(x["time"], 14), clean(x["place"], 16)]
         soon = False
+        e = x["end_iso"]
     det = " · ".join(dict.fromkeys(v for v in det if v and v.strip("~ ")))
-    return {"t": x["title"], "u": x["url"], "g": x["gu"], "d": d, "k": x["km"], "x": det, "soon": soon}
+    return {"t": x["title"], "u": x["url"], "g": x["gu"], "d": d, "k": x["km"], "x": det, "soon": soon, "e": e}
 
 
 def main():
