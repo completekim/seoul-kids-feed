@@ -473,14 +473,16 @@ def main():
 
     # ── 조립 ──
     N = len(body); K = newK
+    # 맨 위 띠 — 이 메일이 어느 시점의 아티팩트(원장)를 찍은 것인지 + 고르기 링크 (2026-10-01 사용자 요청 「아티팩트(261001) 참고 제작 메일」)
+    stamp = "<div style='background-color:#eaf3ff;border-bottom:1px solid #d6e4f7;border-radius:14px 14px 0 0;padding:9px 18px;font-size:12px;color:#1a4fc4;line-height:1.6'>📋 <b>아티팩트(%s) 참고 제작 메일</b> — <a href='%s' style='color:#12409e;font-weight:700;text-decoration:underline'>고르기 열기</a> <span style='color:#6b7280'>(📌 고정 · ✕ 숨기기 — 누른 것은 다음 메일부터)</span></div>" % (now.strftime('%y%m%d'), ART)
     head = ["<div style='background-color:#eef0f4;padding:14px 8px;font-family:-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,sans-serif'>",
             "<div style='max-width:560px;margin:0 auto;background-color:#ffffff;border-radius:14px;color:#1f2937;padding-bottom:6px'>",
-            "<div style='padding:16px 18px 4px'>",
+            stamp,
+            "<div style='padding:12px 18px 4px'>",
             "<div style='font-size:11px;color:#8a93a3;font-weight:700;letter-spacing:.3px'>수도권 축제·행사 알림</div>",
             "<div style='font-size:23px;font-weight:800;color:#111827;margin-top:2px'>%d월 %d일 (%s)</div>" % (today.month, today.day, WD[today.weekday()]),
             "<div style='font-size:13px;color:#5b6472;margin-top:5px;line-height:1.5'>서울·경기·인천 <b>%d건</b> — 축제 %d · 공연 %d · 전시 %d · NEW %d건. 상설 프로그램 <b>%d건은 맨 아래</b>에 따로 실었습니다.%s</div>" % (N, cats['EV01'], cats['EV02'], cats['EV03'], K, len(perm), ' <b style=\'color:#c0392b\'>⚠️ %s 수집 실패 — 그 지역은 빠졌습니다.</b>' % esc(hold) if fails else ''),
             "<div style='font-size:12px;color:#6b7280;margin-top:9px;line-height:1.9'><span style='background-color:#fde8e6;border:1px solid #f3c9c4;color:#c0392b;padding:1px 6px;border-radius:5px;font-size:12px'>⏳ 곧 끝남</span> : 진행 중인데 7일 안에 끝남<br>거리는 위례 스타필드에서 직선거리<br>가까운 순으로 정렬</div>",
-            "<div style='font-size:12.5px;margin-top:8px'><a href='%s' style='color:#12409e;font-weight:700;text-decoration:underline'>📋 고르기 — 📌 고정 · ✕ 숨기기</a> <span style='color:#8a93a3'>(누른 것은 다음 메일부터)</span></div>" % ART,
             "</div>"]
     if plan['notice']: head.append("<div style='background-color:#eaf3ff;border:1px solid #b9d4f5;border-radius:10px;margin:12px 18px 0;padding:11px 13px;font-size:13px;color:#1a4fc4;line-height:1.6'>%s</div>" % esc(plan['notice']))
     more = ["<div style='padding:26px 18px 2px;font-size:13px;font-weight:800'>🔎 더 찾아보기</div>",
