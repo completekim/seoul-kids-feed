@@ -18,6 +18,8 @@
   sk.json      completekim/seoul-kids-feed data/feed.json — 없으면 🎟·🎭 상자에 안내 한 줄
   led/feed/current.json   ArtifactData get(out_dir=led)로 받은 원장 — 없으면 첫 실행(NEW 생략)
   marks/marks/*.json      ArtifactData list(out_dir=marks)로 받은 📌·✕ 표시
+  visits/visits/*.json    (선택) ✓ 다녀옴 {t, d, ds:[날짜…]} — 다녀온 날이 행사 시작 전이면 「작년에 갔던 곳」
+  go/go/*.json            (선택) 🚗 간다 {t, e} — 메일 맨 위 「이번에 갈 곳」 상자로 옮겨 크게
   d.txt        (mail) 새로 조회한 상세 — cid|요금|시간|장소|아이 거리
   excl.txt     (mail) 본문에서 뺄 것 — cid|사유 (수완 나이 제한·타지역 홍보 장터). 원장 skipped 에 남아 다음 회차에도 유지
   kid.txt      (mail) 제목만으로는 안 걸리는 🧒(지역 마스코트 등) — cid 한 줄씩. 원장에 남는다
@@ -198,6 +200,14 @@ def load_ledger(tmp, now):
     skipped = {s['k']: s for s in led.get('skipped', []) if isinstance(s, dict) and s.get('k')}
     return {'items': prev, 'skipped': skipped, 'lastmail': lastmail, 'note': note, 'fresh': False}
 
+def load_coll(tmp, name):
+    """고르기 화면의 추가 표시 — visits(✓ 다녀옴: {t, d, ds:[날짜…]}) · go(🚗 간다: {t, e}). 없으면 빈 dict."""
+    out = {}
+    for p in glob.glob(os.path.join(tmp, name, name, '*.json')):
+        d = unwrap(read_json(p) or {})
+        if isinstance(d, dict): out[os.path.basename(p)[:-5]] = d
+    return out
+
 def load_marks(tmp, today):
     hide, pin, yr, expired = {}, {}, 0, 0
     for p in glob.glob(os.path.join(tmp, 'marks', 'marks', '*.json')):
@@ -298,6 +308,7 @@ def badges(it, wet):
     if wet and INDOOR.search((it.get('x') or '') + ' ' + it['t']): b.append(('indoor', '🏠 실내'))
     if it.get('soon'): b.append(('soon', it['soon']))
     if it.get('gone'): b.append(('gone', '⚠ 목록에서 빠짐'))
+    if it.get('vis'): b.append(('vis', it['vis']))
     return b
 
 # ───────────────────────── HTML ─────────────────────────
@@ -310,6 +321,8 @@ SP = {
     'indoor': "<span style='background-color:#e7f0fb;border:1px solid #bcd3ef;color:#1e4fa3;padding:1px 6px;border-radius:5px;font-size:12px'>%s</span>",
     'gone': "<span style='background-color:#f3f4f6;border:1px solid #d1d5db;color:#6b7280;padding:1px 6px;border-radius:5px;font-size:12px'>%s</span>",
     'km': "<span style='color:#8a93a3;font-size:12px'>%s</span>",
+    'vis': "<span style='background-color:#e8f5ec;border:1px solid #b9dfc4;color:#1f6b3a;padding:1px 6px;border-radius:5px;font-size:12px'>%s</span>",
+    'go': "<span style='background-color:#1e3a8a;color:#ffffff;font-weight:800;padding:1px 6px;border-radius:5px;font-size:11px'>🚗 간다</span>",
 }
 COLORS = {'green': ('#cde3cd', '#f4faf4', '#2e7d4f'), 'orange': ('#f5d0b5', '#fff6ef', '#b4541a'), 'purple': ('#ddd3f1', '#f7f4fd', '#5b3fa0'),
           'gray': ('#e2e6ec', '#f6f7f9', '#4b5563'), 'teal': ('#bfe3dc', '#f1faf8', '#0f766e'), 'blue': ('#c9d8f2', '#f3f7fd', '#1e4fa3')}
@@ -415,13 +428,29 @@ def main():
 
     allitems = list(items.values()) + skitems
     for it in allitems: it['new'] = bool(lastmail) and it['first'] > lastmail and not led['fresh']
+    # ✓ 다녀옴 · 🚗 간다 (2026-10-04 추가) — 다녀온 날이 이번 행사 시작 전이면 「예전에 갔던 곳」(제목 키가 연도를 떼서 내년 같은 축제에 붙는다)
+    visits, gos = load_coll(tmp, 'visits'), load_coll(tmp, 'go')
+    for it in allitems:
+        v = visits.get(it['k'])
+        if not v: continue
+        ds = sorted(x for x in (v.get('ds') or [v.get('d', '')]) if re.fullmatch(r'\d{4}-\d{2}-\d{2}', str(x)))
+        if not ds: continue
+        start = it.get('s') or ''
+        now_ds = [x for x in ds if not start or x >= start]
+        if now_ds: it['vis'] = '✓ %s 다녀옴' % md(dt.date.fromisoformat(now_ds[-1]))
+        else:
+            last = dt.date.fromisoformat(ds[-1])
+            it['vis'] = '🔁 %s 갔던 곳' % ('작년에' if last.year == today.year - 1 else '%d년에' % last.year if last.year < today.year else '%s에' % md(last))
+    go_k = {k for k, v in gos.items() if (str(v.get('e') or '9') >= today.isoformat())}
+    go_items = [it for it in allitems if it['k'] in go_k and it['k'] not in skipped and not (it.get('vis') or '').startswith('✓')]
+    go_set = {it['k'] for it in go_items}
     shown = [it for it in allitems if it['k'] not in hide and it['k'] not in skipped]
     body = [it for it in shown if it['src'] == 'tour' and it['b'] != 'b4']; perm = [it for it in shown if it['b'] == 'b4']
     hidden_n = sum(1 for it in items.values() if it['k'] in hide); skip_n = sum(1 for it in items.values() if it['k'] in skipped)
     assert stat['total'] + stat['gone'] == len(body) + len(perm) + hidden_n + skip_n, (stat, len(body), len(perm), hidden_n, skip_n)
     newK = sum(1 for it in body + perm if it['new']); newS = sum(1 for it in shown if it['src'] != 'tour' and it['new'])
     cats = {c: sum(1 for it in body if it.get('cat') == c) for c in CAT}
-    by = {b: sort_box([it for it in shown if it['b'] == b], pin) for b in ('b1', 'b2', 'b3', 'b4', 'yeyak', 'culture')}
+    by = {b: sort_box([it for it in shown if it['b'] == b and it['k'] not in go_set], pin) for b in ('b1', 'b2', 'b3', 'b4', 'yeyak', 'culture')}
     wl1, wl2 = wx_line(wx, plan['days1'], today), wx_line(wx, plan['days2'], today)
     wet1, wet2 = any(w in wl1 for w in WET), any(w in wl2 for w in WET)
     hold = ' · '.join(f[0] for f in fails)
@@ -435,6 +464,29 @@ def main():
         boxes_meta.append({'id': bid, 'name': title, 'color': color})
         if not lst and nhid.get(bid): empty = '이 상자의 %d건은 모두 고르기에서 숨겼습니다 — 되살리려면 📋 고르기의 「✕ 숨김」 탭' % nhid[bid]
         return box_html(color, title, sub, [row_html(it, it['new'], it['k'] in pin, wet, detail) for it in lst], empty, extra)
+    # 🚗 이번에 갈 곳 — 고르기에서 「간다」를 누른 행사만, 원래 상자에서 빼서 맨 위에 크게(중복 없음)
+    HG = ''
+    if go_items:
+        cards = []
+        for it in sorted(go_items, key=lambda z: (z.get('s') or '', z.get('kmv') or 9999)):
+            s0 = dt.date.fromisoformat(it['s']) if re.fullmatch(r'\d{4}-\d{2}-\d{2}', it.get('s') or '') else today
+            e0 = dt.date.fromisoformat(it['e']) if re.fullmatch(r'\d{4}-\d{2}-\d{2}', it.get('e') or '') else today + dt.timedelta(days=13)
+            lo, hi = max(s0, today), min(e0, today + dt.timedelta(days=13))
+            span = [lo + dt.timedelta(days=i) for i in range(max(0, (hi - lo).days + 1))]
+            offd = [d for d in span if d.weekday() >= 5 or d.isoformat() in HOLI] or span
+            wl = wx_line(wx, offd[:3], today)
+            meta = ' · '.join(x for x in (it.get('g', ''), it.get('d', ''), it.get('km', '')) if x)
+            bs = ' '.join(SP[k] % esc(t) for k, t in badges(it, any(w in wl for w in WET)))
+            c = ["<div style='padding:9px 0 7px;border-top:1px solid #dbe5f5'>",
+                 "<div style='font-size:15px;font-weight:800;line-height:1.5'>%s <a href='%s' style='color:#12409e;text-decoration:underline'>%s</a></div>" % (SP['go'], esc(it['u']), esc(it['t'])),
+                 "<div style='font-size:12.5px;color:#374151;margin-top:3px'>%s %s</div>" % (esc(meta), bs)]
+            if it.get('x'): c.append("<div style='font-size:12.5px;color:#4b5563;margin-top:3px;line-height:1.55'>%s</div>" % esc(it['x']))
+            if wl: c.append("<div style='font-size:12px;color:#1e3a8a;margin-top:3px'>%s</div>" % esc(wl))
+            c.append('</div>')
+            cards.append('\n'.join(c))
+        HG = ("<div style='margin:18px 14px 0;padding:12px 14px 6px;border-radius:12px;border:2px solid #93b4e8;background-color:#eef4fd'>"
+              "<div style='font-size:13px;font-weight:800;color:#1e3a8a'>🚗 이번에 갈 곳 — %d건</div>"
+              "<div style='font-size:12px;color:#6b7280;margin-top:3px'>고르기에서 「🚗 간다」를 누른 행사입니다. 다녀오면 「✓ 다녀옴」을 눌러 주세요.</div>\n%s\n</div>") % (len(go_items), '\n'.join(cards))
     H1 = bx('b1', 'green', plan['n1'], wxdiv(wl1), by['b1'], '이 기간에 시작하는 행사 없음', wet1, True)
     H2 = bx('b2', 'orange', plan['n2'] or '🎪 다음 주말', wxdiv(wl2), by['b2'], '이 기간에 시작하는 행사 없음', wet2, True) if plan['n2'] else ''
     if sk is None:
@@ -466,7 +518,7 @@ def main():
     else:
         rep.append('서울 아이 거리 — 목록 %s 갱신 · 🎟 %d건(NEW %d) · 🎭 %d건(NEW %d) · 키즈카페 %d곳' % (skmeta['generated'][5:].replace('-', '/'), len(by['yeyak']), sum(1 for i in by['yeyak'] if i['new']), len(by['culture']), sum(1 for i in by['culture'] if i['new']), skmeta['cafe_count']))
         if skmeta['age_h'] is not None and skmeta['age_h'] > 48: rep.append('⚠️ 서울 거름망 갱신 멈춤(마지막 %s) — GitHub Actions 확인' % skmeta['generated'])
-    rep.append('고르기 — 숨김 %d건(매년 %d) · 고정 %d건 · 끝나서 풀린 것 %d건 · %s' % (len(hide), yr, len(pin), expired, led['note']))
+    rep.append('고르기 — 숨김 %d건(매년 %d) · 고정 %d건 · 끝나서 풀린 것 %d건 · 🚗 간다 %d건 · ✓ 다녀옴 기록 %d곳 · %s' % (len(hide), yr, len(pin), expired, len(go_items), len(visits), led['note']))
     rep.append(('Make 이번 달 ' + a.make) if a.make else 'Make 사용량 미확인')
     if not regular: rep.append('수동 시험이라 네이버 주소 제외 (%s %s 실행 — 예정 시각 밖)' % (WD[now.weekday()], now.strftime('%H:%M')))
     rep += a.note
@@ -496,7 +548,7 @@ def main():
             "<div style='margin:8px 18px 16px;padding:0 4px;font-size:12px;line-height:1.8;color:#6b7280'>" + '<br>'.join(' · ' + esc(r) for r in rep) + "</div>",
             "<div style='padding:10px 18px 20px;font-size:11px;color:#a8afba;border-top:1px solid #eee;margin-top:6px;line-height:1.6'>매주 수요일 20:37 · 토요일 08:37 자동 발송 · 출처 한국관광공사 TourAPI · 서울 열린데이터광장<br>행사 제목은 네이버 검색으로, 🎟·🎭 제목은 서울시 신청·안내 페이지로 연결됩니다</div>",
             "</div></div>"]
-    htmlout = '\n'.join(head + [H1, H2, Y, C, H3, H4] + more)
+    htmlout = '\n'.join(head + [HG, H1, H2, Y, C, H3, H4] + more)
     subject = '%s[축제알림] %s(%s) 수도권 %d건 — %s · %s %d건' % ('⚠️ ' if fails else '', md(today), WD[today.weekday()], N, '🆕 %d건' % K if K else '🆕 없음', plan['n1'].split(' (')[0], len(by['b1']))
     to = ['wsc627@gmail.com'] + (['tjsdk3799@naver.com'] if regular else [])
 
