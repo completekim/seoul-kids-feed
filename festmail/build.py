@@ -24,8 +24,15 @@
   excl.txt     (mail) 본문에서 뺄 것 — cid|사유 (수완 나이 제한·타지역 홍보 장터). 원장 skipped 에 남아 다음 회차에도 유지
   kid.txt      (mail) 제목만으로는 안 걸리는 🧒(지역 마스코트 등) — cid 한 줄씩. 원장에 남는다
   fail.txt     (선택) 수집 실패 지역 — 지역|사유
+
+행사 정리(2026-10-10 추가 — 고르기 화면의 「📋 정리」 펼침):
+  plan 이 환경변수 TOURAPI_KEY 가 있으면, 원장에 정리(i)가 없는 TourAPI 행사마다 detailCommon2·detailIntro2·detailInfo2 를
+  직접 불러 칸별로 정리해 info.json 에 남기고, mail 이 그걸 원장 항목의 i 칸에 붙인다. 한 번 정리한 행사는 원장에 남아 다시 부르지 않는다.
+  i = {v, at, time, place, addr, cast(출연), fee, age, prog(프로그램), about(소개), tel, home:[주소…], host(주최), book(예매처)}
+  모델 판단이 끼지 않는다 — 관광공사 원문 칸을 그대로(태그만 지우고 길이만 자른다) 옮긴다. 출연은 detailInfo2 의 「출연」 칸.
 """
-import argparse, glob, hashlib, html, json, math, os, re, sys, urllib.parse, datetime as dt
+import argparse, glob, hashlib, html, json, math, os, re, subprocess, sys, urllib.parse, urllib.request, datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 
 KST = dt.timezone(dt.timedelta(hours=9))
 H = (37.4802, 127.1484)      # 스타필드 시티 위례 (경기 하남시 위례대로 200, TourAPI 좌표)
@@ -100,6 +107,95 @@ def lines(p):
     try:
         with open(p, encoding='utf-8') as f: return [l.rstrip('\n') for l in f if l.strip()]
     except FileNotFoundError: return []
+
+# ───────────────────────── 행사 정리(i) — TourAPI 상세 3종 ─────────────────────────
+INFO_V = 1
+TOUR = 'https://apis.data.go.kr/B551011/KorService2/'
+CAP = {'time': 120, 'place': 120, 'addr': 120, 'cast': 500, 'fee': 500, 'age': 80, 'prog': 1000, 'about': 400, 'tel': 120, 'host': 80, 'book': 200}
+
+def clean(s):
+    s = re.sub(r'<br\s*/?>', '\n', str(s or ''), flags=re.I)
+    s = html.unescape(re.sub(r'</?[A-Za-z][A-Za-z0-9]*(?:\s[^<>]*)?/?>', '', s)).replace('\xa0', ' ')   # 「<문화가 흐르는 서울광장>」 같은 한글 꺾쇠는 살린다
+    s = '\n'.join(re.sub(r'[ \t]+', ' ', l).strip() for l in s.split('\n'))
+    return re.sub(r'\n{3,}', '\n\n', s).strip()
+
+def tidy(s):
+    """한 줄로 뭉쳐 온 요금표(「[정가] - 1일권 … [할인] - …」)를 항목마다 줄바꿈. 이미 줄이 나뉜 글은 그대로."""
+    if '\n' in s or len(s) < 40: return s
+    s = re.sub(r'\s*(\[[^\]]{1,30}\])\s*', r'\n\1\n', s)
+    s = re.sub(r'(?:^|\s+)-\s+(?=\S)', '\n- ', s)                       # 「… - 2일권」
+    s = re.sub(r'(?<=[가-힣%)])-\s+(?=\S)|(?<=[원%)])-(?=\S)', '\n- ', s)   # 「12,000원- 청소년」「지참- 소극장」 (전화번호·날짜의 - 는 그대로)
+    s = re.sub(r'\s*※\s*', '\n※ ', s)
+    return re.sub(r'\n{2,}', '\n', s).strip()
+
+def cut(s, n):
+    return s if len(s) <= n else s[:n - 1].rstrip() + '…'
+
+def get_json(url):
+    """curl 이 먼저(루틴 샌드박스는 curl 이 허용 목록을 통과한다), 안 되면 urllib."""
+    try:
+        r = subprocess.run(['curl', '-sS', '--max-time', '25', url], capture_output=True, timeout=30)
+        if r.returncode == 0 and r.stdout.strip(): return json.loads(r.stdout)
+    except Exception: pass
+    try:
+        with urllib.request.urlopen(url, timeout=25) as f: return json.load(f)
+    except Exception: return None
+
+def tour_items(op, key, cid, typ=True):
+    q = {'serviceKey': key, 'MobileOS': 'ETC', 'MobileApp': 'festalert', '_type': 'json', 'contentId': cid}
+    if typ: q['contentTypeId'] = 15
+    d = get_json(TOUR + op + '?' + urllib.parse.urlencode(q))
+    if not isinstance(d, dict): return None          # 호출 실패 — 다음 회차에 다시
+    body = (d.get('response') or {}).get('body') or {}
+    it = body.get('items') or {}
+    it = it.get('item', []) if isinstance(it, dict) else []
+    return it if isinstance(it, list) else [it]
+
+def homes(s):
+    out = []
+    for u in re.findall(r'(https?://[^\s<>"\')]+|www\.[^\s<>"\')]+|[A-Za-z0-9.-]+\.(?:com|kr|net|org|co\.kr|or\.kr|go\.kr)(?:/[^\s<>"\')]*)?)', s or ''):
+        u = u.rstrip('.,;')
+        if not u.startswith('http'): u = 'https://' + u
+        if u not in out: out.append(u)
+    return out[:3]
+
+def tour_info(key, cid, nowtxt):
+    com, intro, det = tour_items('detailCommon2', key, cid, False), tour_items('detailIntro2', key, cid), tour_items('detailInfo2', key, cid)
+    if com is None or intro is None or det is None: return None
+    c, t = (com or [{}])[0], (intro or [{}])[0]
+    if not com and not intro: return {'v': INFO_V, 'at': nowtxt, 'none': True}   # 관광공사가 contentid 째 지운 행사
+    di = {}
+    for x in det:
+        nm, tx = clean(x.get('infoname')), clean(x.get('infotext'))
+        if nm and tx and nm not in di: di[nm] = tx
+    prog = clean(t.get('program')) or di.get('행사내용', '')
+    sub = clean(t.get('subevent'))
+    if sub and sub not in prog: prog = (prog + '\n\n[부대행사]\n' + sub).strip()
+    cast = di.get('출연', '')
+    if not cast:   # 「출연」 칸이 없으면 프로그램 안의 라인업·출연 줄만
+        m = re.search(r'(?:라인업|출연진|출연)\s*(?:[:：]|\n)\s*-?\s*([^\n]{2,300})', prog)
+        if m: cast = m.group(1).strip(' -')
+    age = clean(t.get('agelimit'))
+    i = {'v': INFO_V, 'at': nowtxt, 'time': clean(t.get('playtime')), 'place': clean(t.get('eventplace')), 'addr': clean(c.get('addr1')),
+         'cast': cast, 'fee': tidy(clean(t.get('usetimefestival'))), 'age': age, 'prog': prog, 'about': clean(c.get('overview')) or di.get('행사소개', ''),
+         'tel': ' '.join(x for x in (clean(c.get('telname')), clean(c.get('tel')) or clean(t.get('sponsor1tel'))) if x),
+         'home': homes(clean(c.get('homepage')) + ' ' + clean(t.get('eventhomepage'))), 'host': clean(t.get('sponsor1')), 'book': clean(t.get('bookingplace'))}
+    for k, n0 in CAP.items(): i[k] = cut(i[k], n0)
+    return {k: v for k, v in i.items() if v not in ('', [])}
+
+def fetch_infos(tmp, items, nowtxt, limit=160):
+    """원장에 정리(i)가 없는 TourAPI 행사만 부른다. 결과는 tmp/info.json {cid: i}."""
+    key = os.environ.get('TOURAPI_KEY', '').strip()
+    path = os.path.join(tmp, 'info.json')
+    have = read_json(path) or {}
+    need = [it for it in items.values() if it.get('src') == 'tour' and it.get('cid') and not (it.get('i') or {}).get('v') and it['cid'] not in have]
+    if not key: return '정리 — TOURAPI_KEY 없음, 건너뜀(정리 없는 행사 %d건)' % len(need)
+    need = need[:limit]
+    with ThreadPoolExecutor(6) as ex: res = list(ex.map(lambda it: (it['cid'], tour_info(key, it['cid'], nowtxt)), need))
+    ok = {c: i for c, i in res if i}
+    have.update(ok)
+    with open(path, 'w', encoding='utf-8') as f: json.dump(have, f, ensure_ascii=False)
+    return '정리 — 새로 %d건 · 실패 %d건(다음 회차에 다시) · 출연 칸 있음 %d건' % (len(ok), len(need) - len(ok), sum(1 for i in ok.values() if i.get('cast')))
 
 # ───────────────────────── 블록(주말·연휴) ─────────────────────────
 def blocks(today):
@@ -242,6 +338,7 @@ def merge(tmp, now, today, prev, skipped, lastmail):
               'u': 'https://search.naver.com/search.naver?query=' + urllib.parse.quote_plus(t),
               'x': (old or {}).get('x', '') if old and old.get('src', 'tour') == 'tour' else '',
               'first': (old or {}).get('first') or nowtxt, 'seen': nowtxt, 'gone': False, 'kid': bool((old or {}).get('kid'))}
+        if old and isinstance(old.get('i'), dict) and old['i'].get('v') and old.get('cid') == cid: it['i'] = old['i']   # 정리는 한 번만 부른다
         if not it['g']: it['g'] = it['addr'].split()[0] if it['addr'] else ''
         items[k] = it
     stat = {'kept': sum(1 for k in items if k in prev), 'added': sum(1 for k in items if k not in prev), 'gone': 0, 'ended': 0, 'dup': dup, 'regions': regions, 'total': len(items)}
@@ -413,6 +510,7 @@ def main():
         for it in sorted(newt, key=lambda z: z.get('kmv') or 9999): P('새|%s|%s|%s|%s' % (it['cid'], it['t'], it['b'], it.get('g', '')))
         gone = [it for it in items.values() if it.get('gone')]
         if gone: P('\n[목록에서 빠졌지만 남긴 것] ' + ' · '.join('%s(~%s)' % (it['t'], it['e'][5:].replace('-', '/')) for it in gone))
+        P('\n[' + fetch_infos(tmp, items, nowtxt) + ']')
         json.dump({'now': nowtxt}, open(os.path.join(tmp, 'plan.json'), 'w'))
         return
 
@@ -426,6 +524,9 @@ def main():
         if it: it['kid'] = True
     skipped = {k: v for k, v in skipped.items() if (v.get('e') or '9') >= today.isoformat()}   # 끝난 제외는 잊는다
 
+    infos = read_json(os.path.join(tmp, 'info.json')) or {}
+    for it in items.values():
+        if it.get('cid') in infos and not (it.get('i') or {}).get('v'): it['i'] = infos[it['cid']]
     allitems = list(items.values()) + skitems
     for it in allitems: it['new'] = bool(lastmail) and it['first'] > lastmail and not led['fresh']
     # ✓ 다녀옴 · 🚗 간다 (2026-10-04 추가) — 다녀온 날이 이번 행사 시작 전이면 「예전에 갔던 곳」(제목 키가 연도를 떼서 내년 같은 축제에 붙는다)
@@ -553,9 +654,11 @@ def main():
     to = ['wsc627@gmail.com'] + (['tjsdk3799@naver.com'] if regular else [])
 
     # ── 원장(feed/current) ──
-    keep = ('k', 'b', 't', 'u', 'g', 'd', 'km', 'x', 'new', 'e', 'src', 'cid', 's', 'cat', 'big', 'kmv', 'first', 'seen', 'gone', 'kid', 'soon')
+    keep = ('k', 'b', 't', 'u', 'g', 'd', 'km', 'x', 'new', 'e', 'src', 'cid', 's', 'cat', 'big', 'kmv', 'first', 'seen', 'gone', 'kid', 'soon', 'i')
     order = {b: i for i, b in enumerate(('b1', 'b2', 'yeyak', 'culture', 'b3', 'b4'))}
     feed_items = [{k: it.get(k, '') for k in keep} for it in sorted([it for it in allitems if it['k'] not in skipped], key=lambda it: (order.get(it['b'], 9), 0 if it['k'] in pin else 1, it.get('kmv') if it.get('kmv') is not None else 9999))]
+    for it in feed_items:
+        if not it['i']: del it['i']
     for it in feed_items: it['kmv'] = it['kmv'] if isinstance(it['kmv'], (int, float)) else None; it['gone'] = bool(it['gone']); it['kid'] = bool(it['kid']); it['new'] = bool(it['new'])
     feed = {'v': LEDGER_V, 'generated': nowtxt, 'mail': '%s(%s) %s' % (md(today), WD[now.weekday()], now.strftime('%H:%M')), 'lastmail': lastmail if not led['fresh'] else nowtxt,
             'boxes': [b for b in boxes_meta if b['id'] in order], 'items': feed_items, 'skipped': list(skipped.values())}
