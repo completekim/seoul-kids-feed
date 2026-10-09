@@ -641,13 +641,12 @@ def main():
     # ── 조립 ──
     N = len(body); K = newK
     # 맨 위 띠 — 이 메일이 어느 시점의 아티팩트(원장)를 찍은 것인지 + 고르기 링크 (2026-10-01 사용자 요청 「아티팩트(261001) 참고 제작 메일」)
-    # 2026-10-10 사용자 「이 부분 화면을 더 넓게 쓰고 눈에 띄게」 — 얇은 한 줄 띠에서 남색 바탕 + 폭 전체 흰 버튼으로
+    # 2026-10-10 사용자 「이 부분 화면을 더 넓게 쓰고 눈에 띄게」 — 얇은 한 줄 띠에서 남색 바탕 블록으로. 글귀는 사용자가 정했고 「고르기 열기」 버튼은 사용자가 뺐다
     stamp = ("<div style='background-color:#1e3a8a;border-radius:14px 14px 0 0;padding:16px 18px 14px'>"
-             "<div style='font-size:12px;color:#c7d7f5;font-weight:700;letter-spacing:.2px'>📋 아티팩트(%s) 참고 제작 메일</div>"
-             "<div style='font-size:16px;font-weight:800;color:#ffffff;margin-top:4px;line-height:1.45'>행사마다 장소·시간·출연·요금을 정리해 두었습니다</div>"
-             "<a href='%s' style='display:block;margin-top:11px;background-color:#ffffff;color:#1e3a8a;font-size:15px;font-weight:800;text-align:center;padding:12px 10px;border-radius:10px;text-decoration:none'>📋 고르기 열기 →</a>"
-             "<div style='font-size:12px;color:#c7d7f5;margin-top:9px;line-height:1.6'>행사 줄의 <b style='color:#ffffff'>📋 정리 ↗</b>를 누르면 그 행사가 펼쳐진 채로 열립니다 · 📌 고정 · ✕ 숨기기 · 🚗 간다는 다음 메일부터 반영</div>"
-             "</div>") % (now.strftime('%y%m%d'), ART)
+             "<div style='font-size:12px;color:#c7d7f5;font-weight:700;letter-spacing:.2px'>📋 아티팩트(축제알림_%s) 기준 메일</div>"
+             "<div style='font-size:16px;font-weight:800;color:#ffffff;margin-top:4px;line-height:1.45'>행사별 장소·시간·출연·요금 정리했어요.</div>"
+             "<div style='font-size:12px;color:#c7d7f5;margin-top:9px;line-height:1.6'>행사마다 붙은 「<b style='color:#ffffff'>📋 정리 ↗</b>」를 누르면 그 행사가 펼쳐져요 · 📌 고정 · ✕ 숨기기 · 🚗 간다는 다음 메일부터 반영돼요</div>"
+             "</div>") % now.strftime('%y%m%d')
     head = ["<div style='background-color:#eef0f4;padding:14px 8px;font-family:-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,sans-serif'>",
             "<div style='max-width:560px;margin:0 auto;background-color:#ffffff;border-radius:14px;color:#1f2937;padding-bottom:6px'>",
             stamp,
