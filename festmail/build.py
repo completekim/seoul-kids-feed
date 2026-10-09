@@ -424,6 +424,17 @@ SP = {
 COLORS = {'green': ('#cde3cd', '#f4faf4', '#2e7d4f'), 'orange': ('#f5d0b5', '#fff6ef', '#b4541a'), 'purple': ('#ddd3f1', '#f7f4fd', '#5b3fa0'),
           'gray': ('#e2e6ec', '#f6f7f9', '#4b5563'), 'teal': ('#bfe3dc', '#f1faf8', '#0f766e'), 'blue': ('#c9d8f2', '#f3f7fd', '#1e4fa3')}
 
+def info_link(it):
+    """📋 정리 — 메일엔 펼침을 못 넣어서(Gmail 이 지움) 고르기 화면의 그 행사로 가는 링크. ?k= 와 #k= 둘 다 — 화면이 어느 쪽이든 받으면 그 행사를 펼친다."""
+    if not (it.get('i') or {}).get('v') or (it.get('i') or {}).get('none'): return ''
+    return " <a href='%s?k=%s#k=%s' style='display:inline-block;border:1px solid #12409e;background-color:#eef4fd;color:#12409e;font-size:11.5px;font-weight:800;padding:0 7px;border-radius:5px;text-decoration:none;white-space:nowrap'>📋 정리 ↗</a>" % (ART, it['k'], it['k'])
+
+def cast_line(it, pad='0 0 5px 11px'):
+    """🎤 출연 — 관광공사 「출연」 칸이 있는 행사만(드물다). 누가 나오는지는 메일에서도 바로 보이게."""
+    c = ((it.get('i') or {}).get('cast') or '').replace('\n', ' ')
+    if not c: return ''
+    return "\n<div style='font-size:12px;color:#374151;line-height:1.5;padding:%s'>🎤 <b>%s</b></div>" % (pad, esc(cut(c, 90)))
+
 def row_html(it, isnew, pinned, wet, detail):
     parts = ['· ']
     if pinned: parts.append(SP['pin'] + ' ')
@@ -432,7 +443,8 @@ def row_html(it, isnew, pinned, wet, detail):
     tail = ' — ' + esc(it.get('g', '')) + ' · ' + esc(it['d'])
     if it.get('km'): tail += ' ' + SP['km'] % esc(it['km'])
     for kind, txt in badges(it, wet): tail += ' ' + SP[kind] % esc(txt)
-    parts.append(tail + '<br>')
+    parts.append(tail + info_link(it) + '<br>')
+    parts.append(cast_line(it))
     if detail and it.get('x'):
         parts.append("\n<div style='font-size:12px;color:#8a93a3;line-height:1.5;padding:0 0 5px 11px'>%s</div>" % esc(it['x']))
     return ''.join(parts)
@@ -580,7 +592,9 @@ def main():
             bs = ' '.join(SP[k] % esc(t) for k, t in badges(it, any(w in wl for w in WET)))
             c = ["<div style='padding:9px 0 7px;border-top:1px solid #dbe5f5'>",
                  "<div style='font-size:15px;font-weight:800;line-height:1.5'>%s <a href='%s' style='color:#12409e;text-decoration:underline'>%s</a></div>" % (SP['go'], esc(it['u']), esc(it['t'])),
-                 "<div style='font-size:12.5px;color:#374151;margin-top:3px'>%s %s</div>" % (esc(meta), bs)]
+                 "<div style='font-size:12.5px;color:#374151;margin-top:3px'>%s %s%s</div>" % (esc(meta), bs, info_link(it))]
+            cl = cast_line(it, '3px 0 0')
+            if cl: c.append(cl)
             if it.get('x'): c.append("<div style='font-size:12.5px;color:#4b5563;margin-top:3px;line-height:1.55'>%s</div>" % esc(it['x']))
             if wl: c.append("<div style='font-size:12px;color:#1e3a8a;margin-top:3px'>%s</div>" % esc(wl))
             c.append('</div>')
@@ -627,7 +641,13 @@ def main():
     # ── 조립 ──
     N = len(body); K = newK
     # 맨 위 띠 — 이 메일이 어느 시점의 아티팩트(원장)를 찍은 것인지 + 고르기 링크 (2026-10-01 사용자 요청 「아티팩트(261001) 참고 제작 메일」)
-    stamp = "<div style='background-color:#eaf3ff;border-bottom:1px solid #d6e4f7;border-radius:14px 14px 0 0;padding:9px 18px;font-size:12px;color:#1a4fc4;line-height:1.6'>📋 <b>아티팩트(%s) 참고 제작 메일</b> — <a href='%s' style='color:#12409e;font-weight:700;text-decoration:underline'>고르기 열기</a> <span style='color:#6b7280'>(📌 고정 · ✕ 숨기기 — 누른 것은 다음 메일부터)</span></div>" % (now.strftime('%y%m%d'), ART)
+    # 2026-10-10 사용자 「이 부분 화면을 더 넓게 쓰고 눈에 띄게」 — 얇은 한 줄 띠에서 남색 바탕 + 폭 전체 흰 버튼으로
+    stamp = ("<div style='background-color:#1e3a8a;border-radius:14px 14px 0 0;padding:16px 18px 14px'>"
+             "<div style='font-size:12px;color:#c7d7f5;font-weight:700;letter-spacing:.2px'>📋 아티팩트(%s) 참고 제작 메일</div>"
+             "<div style='font-size:16px;font-weight:800;color:#ffffff;margin-top:4px;line-height:1.45'>행사마다 장소·시간·출연·요금을 정리해 두었습니다</div>"
+             "<a href='%s' style='display:block;margin-top:11px;background-color:#ffffff;color:#1e3a8a;font-size:15px;font-weight:800;text-align:center;padding:12px 10px;border-radius:10px;text-decoration:none'>📋 고르기 열기 →</a>"
+             "<div style='font-size:12px;color:#c7d7f5;margin-top:9px;line-height:1.6'>행사 줄의 <b style='color:#ffffff'>📋 정리 ↗</b>를 누르면 그 행사가 펼쳐진 채로 열립니다 · 📌 고정 · ✕ 숨기기 · 🚗 간다는 다음 메일부터 반영</div>"
+             "</div>") % (now.strftime('%y%m%d'), ART)
     head = ["<div style='background-color:#eef0f4;padding:14px 8px;font-family:-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,sans-serif'>",
             "<div style='max-width:560px;margin:0 auto;background-color:#ffffff;border-radius:14px;color:#1f2937;padding-bottom:6px'>",
             stamp,
