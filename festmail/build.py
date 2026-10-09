@@ -645,7 +645,7 @@ def main():
     stamp = ("<div style='background-color:#1e3a8a;border-radius:14px 14px 0 0;padding:16px 18px 14px'>"
              "<div style='font-size:12px;color:#c7d7f5;font-weight:700;letter-spacing:.2px'>📋 아티팩트(축제알림_%s) 기준 메일</div>"
              "<div style='font-size:16px;font-weight:800;color:#ffffff;margin-top:4px;line-height:1.45'>행사별 장소·시간·출연·요금 정리했어요.</div>"
-             "<div style='font-size:12px;color:#c7d7f5;margin-top:9px;line-height:1.7'>행사마다 붙은 「<b style='color:#ffffff'>📋 정리 ↗</b>」를 누르면 그 행사가 펼쳐져요<br>📌 고정 · ✕ 숨기기 · 🚗 간다는 다음 메일부터 반영돼요<br>⏳ = 곧 끝남(~7일)<br>표기된 거리 = 위례 스타필드에서 직선거리<br>정렬 순서 : 가까운 순</div>"
+             "<div style='font-size:12px;color:#c7d7f5;margin-top:9px;line-height:1.7'>행사마다 붙은 「<b style='color:#ffffff'>📋 정리 ↗</b>」를 누르면 그 행사가 펼쳐져요<br>📌 고정 · ✕ 숨기기 · 🚗 간다는 다음 메일부터 반영돼요<br>⏳ = 곧 끝남(~7일)<br>표기된 거리 = 위례 스타필드에서 직선거리<br>정렬 순서 : 각 카드별 가까운 순</div>"
              "</div>") % now.strftime('%y%m%d')
     head = ["<div style='background-color:#eef0f4;padding:14px 8px;font-family:-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,sans-serif'>",
             "<div style='max-width:560px;margin:0 auto;background-color:#ffffff;border-radius:14px;color:#1f2937;padding-bottom:6px'>",
