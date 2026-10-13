@@ -79,13 +79,13 @@ def esc(s):
 
 def is_regular(now):
     t = now.hour * 60 + now.minute
-    return now.weekday() in (2, 4) and 16 * 60 <= t <= 18 * 60
+    return now.weekday() in (1, 4) and 16 * 60 <= t <= 18 * 60
 
 def last_regular_before(now):
-    """now 직전의 정기 회차 시각(수 16:57 / 금 16:57)."""
+    """now 직전의 정기 회차 시각(화 16:57 / 금 16:57 — 2026-10-14 수·금에서 바꿈)."""
     for back in range(0, 8):
         d = now - dt.timedelta(days=back)
-        for wd, hh, mm in ((2, 16, 57), (4, 16, 57)):
+        for wd, hh, mm in ((1, 16, 57), (4, 16, 57)):
             if d.weekday() == wd:
                 c = d.replace(hour=hh, minute=mm, second=0, microsecond=0)
                 if c <= now: return c
@@ -665,7 +665,7 @@ def main():
             "</tr></table>",
             "<div style='padding:26px 18px 2px;font-size:13px;font-weight:800'>🔧 정비</div>",
             "<div style='margin:8px 18px 16px;padding:0 4px;font-size:12px;line-height:1.8;color:#6b7280'>" + '<br>'.join(' · ' + esc(r) for r in rep) + "</div>",
-            "<div style='padding:10px 18px 20px;font-size:11px;color:#a8afba;border-top:1px solid #eee;margin-top:6px;line-height:1.6'>매주 수·금 17:00 자동 발송 · 출처 한국관광공사 TourAPI · 서울 열린데이터광장<br>행사 제목은 네이버 검색으로, 🎟·🎭 제목은 서울시 신청·안내 페이지로 연결됩니다</div>",
+            "<div style='padding:10px 18px 20px;font-size:11px;color:#a8afba;border-top:1px solid #eee;margin-top:6px;line-height:1.6'>매주 화·금 17:00 자동 발송 · 출처 한국관광공사 TourAPI · 서울 열린데이터광장<br>행사 제목은 네이버 검색으로, 🎟·🎭 제목은 서울시 신청·안내 페이지로 연결됩니다</div>",
             "</div></div>"]
     htmlout = '\n'.join(head + [HG, H1, H2, Y, C, H3, H4] + more)
     subject = '%s[축제알림] %s(%s) 수도권 %d건 — %s · %s %d건' % ('⚠️ ' if fails else '', md(today), WD[today.weekday()], N, '🆕 %d건' % K if K else '🆕 없음', plan['n1'].split(' (')[0], len(by['b1']))
